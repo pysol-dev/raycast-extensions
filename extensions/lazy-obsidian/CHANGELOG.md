@@ -21,3 +21,11 @@
 - Remove unused `yaml` dependency; fix monorepo `.npmrc` omit parsing
 - Rename metadata screenshots `lazy-obdisian-*` → `lazy-obsidian-*`
 - Replace non-editable TagPicker link with Description; Prettier/ESLint clean
+
+## [Phase 1 — Prompt + Jina page fetch] - 2026-07-20
+
+- Author set to Raycast username `xeno`
+- Page content via **Jina Reader** (`r.jina.ai`) with browser engine; optional API key + proxy; local HTML fallback
+- YouTube still uses youtube-transcript
+- **Prompt** form field: optional Raycast AI ingest (title/folder/tags/body JSON) when filled
+- Prefs: `jinaApiKey`, `autoProcessWithAI`

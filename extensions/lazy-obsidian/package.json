@@ -4,7 +4,7 @@
   "title": "LazyObsidian",
   "description": "Capture anything from macOS into Obsidian with progressive AI automation",
   "icon": "command-icon.png",
-  "author": "pysol-dev",
+  "author": "xeno",
   "categories": [
     "Productivity"
   ],
@@ -42,6 +42,23 @@
       "title": "Excluded Folders",
       "description": "Comma-separated folder names to hide from folder pickers (in addition to .obsidian/.git/.trash).",
       "default": ""
+    },
+    {
+      "name": "jinaApiKey",
+      "type": "password",
+      "required": false,
+      "title": "Jina Reader API Key",
+      "description": "Optional. Improves rate limits and anti-bot resilience for page capture via r.jina.ai. Free key: https://jina.ai/reader",
+      "placeholder": "jina_..."
+    },
+    {
+      "name": "autoProcessWithAI",
+      "type": "checkbox",
+      "required": false,
+      "title": "AI Processing",
+      "label": "When Prompt is filled, process capture with Raycast AI before save",
+      "description": "Uses your Prompt + vault folder list to format the note body. Requires Raycast AI access.",
+      "default": true
     }
   ],
   "dependencies": {

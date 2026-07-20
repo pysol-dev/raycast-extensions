@@ -25,15 +25,19 @@ import { useEffect, useMemo, useState } from "react";
 import { YoutubeTranscript } from "youtube-transcript";
 import { NoVaultFoundMessage } from "./components/Notifications/NoVaultFoundMessage";
 import { GET_LINK_FROM_BROWSER_SCRIPT, SUPPORTED_BROWSERS } from "./scripts/browser";
+import { processCaptureWithAI } from "./utils/ai-pipeline";
 import { SUMMARY_PROMPT } from "./utils/constants";
 import { listVaultFolders, resolveVaultByName, writeNoteToVault } from "./utils/fs-vault";
 import type { Vault } from "./utils/interfaces";
-import { urlToMarkdown, useObsidianVaults } from "./utils/utils";
+import { fetchPageMarkdown } from "./utils/page-fetch";
+import { useObsidianVaults } from "./utils/utils";
 
 interface Preferences {
   vaultPath?: string;
   openOnCapture?: boolean;
   excludedFolders?: string;
+  jinaApiKey?: string;
+  autoProcessWithAI?: boolean;
 }
 
 interface CaptureFormValues {
@@ -42,6 +46,7 @@ interface CaptureFormValues {
   subFolder: string;
   fileName: string;
   content: string;
+  prompt?: string;
   highlight?: boolean;
   "page-contents"?: boolean;
   summary?: boolean;
@@ -61,8 +66,8 @@ function buildBody(opts: {
   const parts: string[] = [];
   if (opts.content?.trim()) parts.push(opts.content.trim());
   if (opts.linkUrl) {
-    const title = opts.linkTitle || opts.linkUrl;
-    parts.push(`[${title}](${opts.linkUrl})`);
+    const t = opts.linkTitle || opts.linkUrl;
+    parts.push(`[${t}](${opts.linkUrl})`);
   }
   if (opts.includeHighlight && opts.highlight?.trim()) {
     parts.push(`> ${opts.highlight.trim()}`);
@@ -99,20 +104,21 @@ export default function Capture() {
   const [subFolders, setSubFolders] = useState<string[]>([]);
 
   const [selectedText, setSelectedText] = useState<string>("");
-  const [includeHighlight, setIncludeHighlight] = useState<boolean>(true);
-  const [includeSummary, setIncludeSummary] = useState<boolean>(false);
-  const [pageContent, setPageContent] = useState<string>("");
-  const [pageContentMessage, setPageContentMessage] = useState<string>("Include page content");
-  const [summary, setSummary] = useState<string>("");
-  const [selectedResource, setSelectedResource] = useState<string>("");
-  const [includePageContents, setIncludePageContents] = useState<boolean>(false);
-  const [resourceInfo, setResourceInfo] = useState<string>("");
-  const [title, setTitle] = useState<string>("");
+  const [includeHighlight, setIncludeHighlight] = useState(true);
+  const [includeSummary, setIncludeSummary] = useState(false);
+  const [pageContent, setPageContent] = useState("");
+  const [pageContentMessage, setPageContentMessage] = useState("Include page content");
+  const [pageFetchSource, setPageFetchSource] = useState<string>("");
+  const [summary, setSummary] = useState("");
+  const [selectedResource, setSelectedResource] = useState("");
+  const [includePageContents, setIncludePageContents] = useState(false);
+  const [resourceInfo, setResourceInfo] = useState("");
+  const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
+  const [prompt, setPrompt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingContext, setIsLoadingContext] = useState(true);
 
-  // Load persisted defaults once
   useEffect(() => {
     (async () => {
       const [savedVault, savedFolder, savedSub, savedPath] = await Promise.all([
@@ -123,7 +129,6 @@ export default function Capture() {
       ]);
 
       if (savedVault) {
-        // May be vault name (legacy) or path (current)
         setDefaultVault(String(savedVault));
         setSelectedVaultName(String(savedVault));
       }
@@ -131,16 +136,12 @@ export default function Capture() {
       if (savedFolder) {
         setFolder(String(savedFolder));
       } else if (savedPath) {
-        // migrate legacy Storage Path key
         const parts = String(savedPath).split("/").filter(Boolean);
         if (parts[0]) setFolder(parts[0]);
         if (parts[1]) setSubFolder(parts[1]);
       }
 
-      if (savedSub) {
-        setSubFolder(String(savedSub));
-      }
-
+      if (savedSub) setSubFolder(String(savedSub));
       setDefaultsLoaded(true);
     })().catch(() => setDefaultsLoaded(true));
   }, []);
@@ -151,7 +152,6 @@ export default function Capture() {
     return resolveVaultByName(allVaults, key) || allVaults[0];
   }, [allVaults, selectedVaultName, defaultVault]);
 
-  // Root folders when vault changes
   useEffect(() => {
     if (!activeVault) {
       setFolders([]);
@@ -162,7 +162,6 @@ export default function Capture() {
       const withInbox = rootFolders.includes("inbox") ? rootFolders : ["inbox", ...rootFolders];
       setFolders(withInbox);
       if (folder && folder !== "(vault root)" && !withInbox.includes(folder)) {
-        // saved folder missing in this vault — fall back
         setFolder(withInbox.includes("inbox") ? "inbox" : withInbox[0] || "(vault root)");
       }
     } catch (e) {
@@ -171,7 +170,6 @@ export default function Capture() {
     }
   }, [activeVault?.path, extraExcluded]);
 
-  // Subfolders when folder changes
   useEffect(() => {
     if (!activeVault || !folder || folder === "(vault root)") {
       setSubFolders([]);
@@ -181,15 +179,12 @@ export default function Capture() {
     try {
       const subs = listVaultFolders(activeVault.path, folder, extraExcluded);
       setSubFolders(subs);
-      if (subFolder && !subs.includes(subFolder)) {
-        setSubFolder("");
-      }
+      if (subFolder && !subs.includes(subFolder)) setSubFolder("");
     } catch {
       setSubFolders([]);
     }
   }, [activeVault?.path, folder, extraExcluded]);
 
-  // Capture browser + selection context once on mount
   useEffect(() => {
     let cancelled = false;
 
@@ -198,19 +193,42 @@ export default function Capture() {
         if (url.includes("youtube.com") || url.includes("youtu.be")) {
           if (!cancelled) setPageContentMessage("Include video transcript");
           const captions = await YoutubeTranscript.fetchTranscript(url);
-          if (!cancelled) setPageContent(captions.map((c) => c.text).join("\n"));
+          if (!cancelled) {
+            setPageContent(captions.map((c) => c.text).join("\n"));
+            setPageFetchSource("youtube-transcript");
+          }
+          return;
+        }
+
+        if (!cancelled) setPageContentMessage("Include page content");
+        const result = await fetchPageMarkdown(url, { jinaApiKey: prefs.jinaApiKey });
+        if (cancelled) return;
+
+        if (result.markdown.trim()) {
+          setPageContent(result.markdown);
+          setPageFetchSource(result.source);
+          if (result.title) {
+            setResourceInfo((prev) => prev || result.title || "");
+            setTitle((prev) => (titleTouched || prev ? prev : result.title || prev));
+          }
+          if (result.source === "jina") {
+            showToast({ style: Toast.Style.Success, title: "Page fetched via Jina Reader" });
+          } else if (result.source === "local") {
+            showToast({ style: Toast.Style.Success, title: "Page fetched (local fallback)" });
+          }
         } else {
-          if (!cancelled) setPageContentMessage("Include page content");
-          const markdown = await urlToMarkdown(url);
-          if (!cancelled) setPageContent(markdown);
+          setPageContent("");
+          setPageFetchSource("empty");
+          showToast({
+            style: Toast.Style.Failure,
+            title: "Could not extract page content",
+            message: result.error || "Try again or paste content into Note",
+          });
         }
       } catch (error) {
         console.error(error);
         if (!cancelled) {
-          showToast({
-            title: "Failed to fetch page content",
-            style: Toast.Style.Failure,
-          });
+          showToast({ title: "Failed to fetch page content", style: Toast.Style.Failure });
         }
       }
     };
@@ -218,14 +236,12 @@ export default function Capture() {
     const setText = async () => {
       setIsLoadingContext(true);
       try {
-        // Prefer Raycast API (more reliable than AppleScript process list)
         let activeApp = "";
         try {
           const front = await getFrontmostApplication();
           activeApp = front.name;
         } catch (error) {
           console.log(error);
-          activeApp = "";
         }
 
         if (activeApp && SUPPORTED_BROWSERS.includes(activeApp)) {
@@ -254,8 +270,7 @@ export default function Capture() {
           setSelectedText(data);
           setTitle((prev) => {
             if (titleTouched || prev) return prev;
-            const line = data.trim().split("\n")[0] || "";
-            return line.slice(0, 80);
+            return (data.trim().split("\n")[0] || "").slice(0, 80);
           });
         }
       } catch (error) {
@@ -271,7 +286,6 @@ export default function Capture() {
     };
   }, []);
 
-  // AI summary when toggled on
   useEffect(() => {
     let cancelled = false;
     const generateSummary = async () => {
@@ -288,15 +302,12 @@ export default function Capture() {
         setIncludeSummary(false);
       }
     };
-    if (includeSummary && pageContent) {
-      void generateSummary();
-    }
+    if (includeSummary && pageContent) void generateSummary();
     return () => {
       cancelled = true;
     };
   }, [includeSummary, pageContent, canAccessAI]);
 
-  // One-shot context toasts
   useEffect(() => {
     if (isLoadingContext) return;
     if (selectedText && selectedResource) {
@@ -323,13 +334,20 @@ export default function Capture() {
         return;
       }
 
-      const noteTitle = (values.fileName || title || resourceInfo || "Untitled capture").trim();
-      const folderPart = values.folder === "(vault root)" ? "" : values.folder || "";
-      const subPart = values.subFolder && values.subFolder !== "(none)" ? values.subFolder : "";
-      const relativeFolder = path.join(folderPart, subPart);
+      let noteTitle = (values.fileName || title || resourceInfo || "Untitled capture").trim();
+      let folderPart = values.folder === "(vault root)" ? "" : values.folder || "";
+      let subPart = values.subFolder && values.subFolder !== "(none)" ? values.subFolder : "";
 
-      // Prefer live checkbox state over stale form values for conditional fields
-      const body = buildBody({
+      if (includeSummary && !summary && pageContent && canAccessAI) {
+        showToast({
+          style: Toast.Style.Failure,
+          title: "Summary still generating",
+          message: "Wait for AI summary or uncheck Include AI Summary",
+        });
+        return;
+      }
+
+      let body = buildBody({
         content: values.content,
         linkTitle: resourceInfo,
         linkUrl: selectedResource || undefined,
@@ -341,21 +359,66 @@ export default function Capture() {
         includePageContents: includePageContents && Boolean(pageContent),
       });
 
+      const userPrompt = (values.prompt || prompt || "").trim();
+      const shouldAI = Boolean(userPrompt) && canAccessAI && prefs.autoProcessWithAI !== false;
+
+      if (shouldAI) {
+        showToast({ style: Toast.Style.Animated, title: "Processing with AI…" });
+        try {
+          const ai = await processCaptureWithAI({
+            userPrompt,
+            title: noteTitle,
+            note: values.content || "",
+            link: selectedResource,
+            highlight: selectedText,
+            pageContent,
+            folders,
+            subfolders: subFolders,
+            currentFolder: folderPart || "(vault root)",
+            currentSubfolder: subPart,
+          });
+
+          if (ai.title?.trim()) noteTitle = ai.title.trim();
+          if (ai.body_markdown?.trim()) {
+            body = ai.body_markdown.trim();
+            // Still append link if AI omitted it and we have one
+            if (selectedResource && !body.includes(selectedResource)) {
+              body += `\n\n[${resourceInfo || selectedResource}](${selectedResource})`;
+            }
+          }
+          if (ai.folder !== undefined) {
+            const f = ai.folder === "(vault root)" ? "" : ai.folder;
+            if (!f || folders.includes(f) || f === "") folderPart = f;
+          }
+          if (ai.subfolder !== undefined) {
+            const s = ai.subfolder === "(none)" ? "" : ai.subfolder;
+            if (!s || subFolders.includes(s) || s === "") subPart = s;
+          }
+          if (ai.tags?.length) {
+            const tagLine = ai.tags.map((t) => t.replace(/^#/, "")).join(", ");
+            if (!body.startsWith("---")) {
+              body = `---\ntags: [${ai.tags.map((t) => `"${t.replace(/^#/, "")}"`).join(", ")}]\n---\n\n${body}`;
+            } else if (!body.includes("tags:")) {
+              body = body.replace(/^---\n/, `---\ntags: [${tagLine}]\n`);
+            }
+          }
+          showToast({ style: Toast.Style.Success, title: "AI processing done" });
+        } catch (e) {
+          console.error(e);
+          showToast({
+            style: Toast.Style.Failure,
+            title: "AI processing failed",
+            message: "Saving without AI transform",
+          });
+        }
+      }
+
       if (!body.trim() && !noteTitle) {
         showToast({ style: Toast.Style.Failure, title: "Nothing to capture" });
         return;
       }
 
-      // Don't capture while summary still generating
-      if (includeSummary && !summary && pageContent && canAccessAI) {
-        showToast({
-          style: Toast.Style.Failure,
-          title: "Summary still generating",
-          message: "Wait for AI summary or uncheck Include AI Summary",
-        });
-        return;
-      }
-
+      const relativeFolder = path.join(folderPart, subPart);
       await LocalStorage.setItem("vault", vault.path);
       await LocalStorage.setItem("folder", folderPart || "inbox");
       await LocalStorage.setItem("subFolder", subPart);
@@ -417,6 +480,8 @@ export default function Capture() {
               setSummary("");
               setIncludeSummary(false);
               setIncludePageContents(false);
+              setPrompt("");
+              setPageFetchSource("");
               if (!titleTouched) setTitle("");
               showToast({ style: Toast.Style.Success, title: "Capture Cleared" });
             }}
@@ -424,14 +489,7 @@ export default function Capture() {
         </ActionPanel>
       }
     >
-      <Form.Dropdown
-        id="vault"
-        title="Vault"
-        value={selectedVaultName || vaultDefault}
-        onChange={(v) => {
-          setSelectedVaultName(v);
-        }}
-      >
+      <Form.Dropdown id="vault" title="Vault" value={selectedVaultName || vaultDefault} onChange={setSelectedVaultName}>
         {allVaults.map((vault) => (
           <Form.Dropdown.Item key={vault.path} value={vault.path} title={vault.name} icon="🧳" />
         ))}
@@ -468,6 +526,17 @@ export default function Capture() {
         }}
       />
 
+      {canAccessAI ? (
+        <Form.TextArea
+          title="Prompt"
+          id="prompt"
+          value={prompt}
+          onChange={setPrompt}
+          placeholder="Optional: tell Raycast AI what to do (e.g. relate to [[Viktor Frankl]], tag, rewrite…)"
+          info="When filled, capture is processed with Raycast AI before save (if AI Processing pref is on)."
+        />
+      ) : null}
+
       {selectedText ? (
         <Form.Checkbox
           id="highlight"
@@ -482,7 +551,11 @@ export default function Capture() {
         <Form.Checkbox
           id="page-contents"
           title={pageContentMessage}
-          label="Include fetched page content / transcript"
+          label={
+            pageFetchSource
+              ? `Include fetched content (via ${pageFetchSource})`
+              : "Include fetched page content / transcript"
+          }
           value={includePageContents}
           onChange={setIncludePageContents}
         />
@@ -511,7 +584,7 @@ export default function Capture() {
 
       <Form.Description
         title="Write path"
-        text="Saves via filesystem (no Advanced URI required). Optional open uses core Obsidian URI."
+        text="Filesystem save (no Advanced URI). Pages via Jina Reader → local fallback. Optional open uses core Obsidian URI."
       />
     </Form>
   );

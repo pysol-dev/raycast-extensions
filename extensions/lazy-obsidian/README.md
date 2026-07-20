@@ -27,6 +27,12 @@ npm run dev
 3. In Raycast, open **Lazy Capture** (import the extension from the folder if needed)
 4. Optional preference: set **Vault Path(s)**; otherwise vaults are auto-detected from Obsidian's `obsidian.json`
 
+## Page content
+
+Pages are fetched with **[Jina Reader](https://jina.ai/reader)** (`r.jina.ai`) first (server-side browser / anti-bot resilient), then a local HTML fallback. Optional **Jina Reader API Key** in preferences raises rate limits and enables proxy routing.
+
+YouTube URLs use `youtube-transcript` instead.
+
 ## Preferences
 
 | Preference | Description |

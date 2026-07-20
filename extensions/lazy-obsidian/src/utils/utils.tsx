@@ -2,15 +2,9 @@ import { getPreferenceValues } from "@raycast/api";
 
 import fs from "fs";
 import { readFile } from "fs/promises";
-import fetch from "node-fetch";
-import { NodeHtmlMarkdown } from "node-html-markdown";
-import { parse } from "node-html-parser";
 import { homedir } from "os";
 import fsPath from "path";
 import { useEffect, useMemo, useState } from "react";
-
-// @ts-expect-error node-fetch polyfill for libraries expecting global fetch
-global.fetch = fetch;
 
 import { ObsidianJSON, ObsidianVaultsState, Vault } from "./interfaces";
 import { GlobalPreferences } from "./preferences";
@@ -54,11 +48,6 @@ async function loadObsidianJson(): Promise<Vault[]> {
   }
 }
 
-/**
- * Resolve vaults from preferences and/or Obsidian's obsidian.json.
- * Preference paths win when set; otherwise auto-detect.
- * If both exist, preference vaults are listed first, then any additional detected vaults.
- */
 export function useObsidianVaults(): ObsidianVaultsState {
   const pref = useMemo(() => getPreferenceValues<GlobalPreferences>(), []);
   const hasPrefPaths = Boolean(pref.vaultPath && pref.vaultPath.trim());
@@ -96,26 +85,4 @@ export function useObsidianVaults(): ObsidianVaultsState {
   }, [hasPrefPaths, pref.vaultPath]);
 
   return state;
-}
-
-export async function urlToMarkdown(url: string): Promise<string> {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "LazyObsidian/0.1 (Raycast; +https://github.com/pysol-dev/raycast-extensions)",
-        Accept: "text/html,application/xhtml+xml",
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const html = await response.text();
-    const root = parse(html);
-    const main = root.querySelector("article") || root.querySelector("main") || root.querySelector("body");
-    const nhm = new NodeHtmlMarkdown();
-    return nhm.translate(main ? main.innerHTML : html);
-  } catch (e) {
-    console.error(e);
-    return "";
-  }
 }
