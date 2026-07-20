@@ -1,0 +1,13 @@
+LazyObsidian includes code derived from:
+
+  Obsidian Smart Capture
+  Copyright (c) millin_gabani / contributors
+  https://github.com/trillhause/obsidian-smart-capture
+  Also published via raycast/extensions (extensions/obsidian-smart-capture)
+  License: MIT
+
+  Patterns also informed by the community Obsidian Raycast extension
+  (vault discovery, NoteCreator FS writes).
+
+Modifications and new code for LazyObsidian are provided under the MIT License
+(see package.json license field).
