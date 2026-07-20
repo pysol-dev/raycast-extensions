@@ -2,6 +2,7 @@ import {
   Action,
   ActionPanel,
   AI,
+  BrowserExtension,
   closeMainWindow,
   environment,
   Form,
@@ -29,7 +30,7 @@ import { processCaptureWithAI } from "./utils/ai-pipeline";
 import { SUMMARY_PROMPT } from "./utils/constants";
 import { listVaultFolders, resolveVaultByName, writeNoteToVault } from "./utils/fs-vault";
 import type { Vault } from "./utils/interfaces";
-import { fetchPageMarkdown } from "./utils/page-fetch";
+import { fetchPageMarkdown, getBrowserTabContext } from "./utils/page-fetch";
 import { useObsidianVaults } from "./utils/utils";
 
 interface Preferences {
@@ -185,23 +186,29 @@ export default function Capture() {
     }
   }, [activeVault?.path, folder, extraExcluded]);
 
+  // Capture browser tab + selection. Prefer official Browser Extension API.
+  // https://developers.raycast.com/api-reference/browser-extension
   useEffect(() => {
     let cancelled = false;
 
-    const loadPageContent = async (url: string) => {
+    const loadPageContent = async (url: string, tabId?: number) => {
       try {
         if (url.includes("youtube.com") || url.includes("youtu.be")) {
           if (!cancelled) setPageContentMessage("Include video transcript");
           const captions = await YoutubeTranscript.fetchTranscript(url);
           if (!cancelled) {
             setPageContent(captions.map((c) => c.text).join("\n"));
-            setPageFetchSource("youtube-transcript");
+            setPageFetchSource("youtube");
           }
           return;
         }
 
         if (!cancelled) setPageContentMessage("Include page content");
-        const result = await fetchPageMarkdown(url, { jinaApiKey: prefs.jinaApiKey });
+        const result = await fetchPageMarkdown(url, {
+          jinaApiKey: prefs.jinaApiKey,
+          preferUrl: url,
+          tabId,
+        });
         if (cancelled) return;
 
         if (result.markdown.trim()) {
@@ -211,18 +218,22 @@ export default function Capture() {
             setResourceInfo((prev) => prev || result.title || "");
             setTitle((prev) => (titleTouched || prev ? prev : result.title || prev));
           }
-          if (result.source === "jina") {
-            showToast({ style: Toast.Style.Success, title: "Page fetched via Jina Reader" });
-          } else if (result.source === "local") {
-            showToast({ style: Toast.Style.Success, title: "Page fetched (local fallback)" });
-          }
+          const label =
+            result.source === "browser-extension"
+              ? "Page from Browser Extension (live tab)"
+              : result.source === "jina"
+              ? "Page fetched via Jina Reader"
+              : result.source === "local"
+              ? "Page fetched (local fallback)"
+              : "Page content";
+          showToast({ style: Toast.Style.Success, title: label });
         } else {
           setPageContent("");
           setPageFetchSource("empty");
           showToast({
             style: Toast.Style.Failure,
             title: "Could not extract page content",
-            message: result.error || "Try again or paste content into Note",
+            message: result.error || "Install Raycast Browser Extension or paste into Note",
           });
         }
       } catch (error) {
@@ -236,29 +247,57 @@ export default function Capture() {
     const setText = async () => {
       setIsLoadingContext(true);
       try {
-        let activeApp = "";
-        try {
-          const front = await getFrontmostApplication();
-          activeApp = front.name;
-        } catch (error) {
-          console.log(error);
+        // 1) Official Browser Extension tabs (best: live DOM + cookies)
+        let tabId: number | undefined;
+        let url = "";
+        let pageTitle = "";
+
+        if (environment.canAccess(BrowserExtension)) {
+          try {
+            const tab = await getBrowserTabContext();
+            if (tab?.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("about:")) {
+              tabId = tab.id;
+              url = tab.url;
+              pageTitle = tab.title || "";
+            }
+          } catch (error) {
+            console.log("BrowserExtension tabs failed", error);
+          }
         }
 
-        if (activeApp && SUPPORTED_BROWSERS.includes(activeApp)) {
+        // 2) Fallback: frontmost app + AppleScript URL (legacy Smart Capture path)
+        if (!url) {
+          let activeApp = "";
           try {
-            const linkInfoStr = await runAppleScript(GET_LINK_FROM_BROWSER_SCRIPT(activeApp));
-            const [url, pageTitle] = linkInfoStr.split("\t");
-            if (url && pageTitle) {
-              if (!cancelled) {
-                setSelectedResource(url);
-                setResourceInfo(pageTitle);
-                setTitle((prev) => (titleTouched || prev ? prev : pageTitle));
-              }
-              await loadPageContent(url);
-            }
+            const front = await getFrontmostApplication();
+            activeApp = front.name;
           } catch (error) {
             console.log(error);
           }
+
+          if (activeApp && SUPPORTED_BROWSERS.includes(activeApp)) {
+            try {
+              const linkInfoStr = await runAppleScript(GET_LINK_FROM_BROWSER_SCRIPT(activeApp));
+              const [u, t] = linkInfoStr.split("\t");
+              if (u) {
+                url = u;
+                pageTitle = t || "";
+              }
+            } catch (error) {
+              console.log(error);
+            }
+          }
+        }
+
+        if (url) {
+          if (!cancelled) {
+            setSelectedResource(url);
+            if (pageTitle) {
+              setResourceInfo(pageTitle);
+              setTitle((prev) => (titleTouched || prev ? prev : pageTitle));
+            }
+          }
+          await loadPageContent(url, tabId);
         }
       } catch (error) {
         console.log(error);
@@ -584,7 +623,7 @@ export default function Capture() {
 
       <Form.Description
         title="Write path"
-        text="Filesystem save (no Advanced URI). Pages via Jina Reader → local fallback. Optional open uses core Obsidian URI."
+        text="Filesystem save (no Advanced URI). Pages: Browser Extension (live tab) → Jina → local. Optional open uses core Obsidian URI."
       />
     </Form>
   );

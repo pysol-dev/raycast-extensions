@@ -29,9 +29,14 @@ npm run dev
 
 ## Page content
 
-Pages are fetched with **[Jina Reader](https://jina.ai/reader)** (`r.jina.ai`) first (server-side browser / anti-bot resilient), then a local HTML fallback. Optional **Jina Reader API Key** in preferences raises rate limits and enables proxy routing.
+Content is resolved in this order (see [Browser Extension API](https://developers.raycast.com/api-reference/browser-extension)):
 
-YouTube URLs use `youtube-transcript` instead.
+1. **Raycast Browser Extension** — `BrowserExtension.getContent({ format: "markdown" })` on the live tab (rendered DOM, cookies/session). Install from [raycast.com/browser-extension](https://www.raycast.com/browser-extension) if prompted.
+2. **[Jina Reader](https://jina.ai/reader)** (`r.jina.ai`) — remote browser when the extension is unavailable or empty.
+3. **Local HTML fetch** — last resort.
+4. **YouTube** — `youtube-transcript`.
+
+Optional **Jina Reader API Key** raises remote rate limits / enables proxy. Prefer the Browser Extension for paywalled or bot-gated pages you already have open.
 
 ## Preferences
 

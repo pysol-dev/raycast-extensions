@@ -29,3 +29,10 @@
 - YouTube still uses youtube-transcript
 - **Prompt** form field: optional Raycast AI ingest (title/folder/tags/body JSON) when filled
 - Prefs: `jinaApiKey`, `autoProcessWithAI`
+
+## [Browser Extension primary page capture] - 2026-07-20
+
+- Prefer official Raycast `BrowserExtension.getTabs` / `getContent({ format: "markdown" })` for live-tab content
+  (https://developers.raycast.com/api-reference/browser-extension)
+- Fallback chain: Browser Extension → Jina Reader → local HTML
+- AppleScript browser URL only when Browser Extension unavailable
