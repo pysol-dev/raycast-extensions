@@ -3,18 +3,19 @@
 ## Goal
 
 Capture content from macOS into an Obsidian vault with progressive AI automation.
-Plan reference: Raycast Note **LazyObsidian**.
+Plan reference: monorepo root [`VERSIONS.md`](../../VERSIONS.md) (and Raycast Note LazyObsidian if present).
 
 ## Stack
 
 - TypeScript, React, `@raycast/api`, `@raycast/utils`
 - **Primary write path:** direct filesystem (`src/utils/fs-vault.ts`)
 - **Optional open:** core `obsidian://open?path=...` (no Advanced URI required)
-- Context: AppleScript browser helpers + `getSelectedText`
+- Context: **BrowserExtension** (primary) → Jina → local; AppleScript URL fallback; `getSelectedText`
 
 ## Do
 
 - Prefer FS writes over Advanced URI
+- Prefer BrowserExtension.getContent for page body (not remote-first)
 - Folder + Sub-Folders via controlled `Form.Dropdown` + `listVaultFolders`
 - Keep capture working without Raycast AI / Pro (`environment.canAccess(AI)`)
 - Native-first side effects (screencapture, AppleScript Reminders later)

@@ -23,3 +23,8 @@ See root [`AGENTS.md`](./AGENTS.md) and each extension's `AGENTS.md`.
 ## License
 
 Each extension carries its own license (typically MIT). LazyObsidian includes code derived from Obsidian Smart Capture (MIT) — see that extension's README/NOTICE.
+
+## Roadmap & versions
+
+See [`VERSIONS.md`](./VERSIONS.md) for shipped versions, Raycast docs audit, and the revised phased roadmap.
+
