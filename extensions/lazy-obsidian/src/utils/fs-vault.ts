@@ -11,7 +11,7 @@ export function sanitizeFileName(name: string): string {
     .replace(/[\\/:*?"<>|]/g, "-")
     .replace(/\s+/g, " ")
     .replace(/\.+$/, "");
-  return cleaned.length > 0 ? cleaned : `capture-${Date.now()}`;
+  return cleaned.length > 0 ? cleaned.slice(0, 180) : `capture-${Date.now()}`;
 }
 
 export function resolveVaultByName(vaults: Vault[], vaultName: string): Vault | undefined {
@@ -53,47 +53,64 @@ export interface WriteNoteResult {
   created: boolean;
 }
 
+function uniqueMarkdownPath(
+  absoluteDir: string,
+  folder: string,
+  fileName: string
+): { absolutePath: string; relativePath: string } {
+  let absolutePath = path.join(absoluteDir, `${fileName}.md`);
+  let relativePath = path.join(folder, `${fileName}.md`);
+  if (!fs.existsSync(absolutePath)) {
+    return { absolutePath, relativePath };
+  }
+  let i = 1;
+  while (fs.existsSync(absolutePath)) {
+    const unique = `${fileName}-${i}`;
+    absolutePath = path.join(absoluteDir, `${unique}.md`);
+    relativePath = path.join(folder, `${unique}.md`);
+    i += 1;
+  }
+  return { absolutePath, relativePath };
+}
+
 /**
  * Primary write path: direct filesystem (no Advanced URI required).
  */
 export async function writeNoteToVault(opts: WriteNoteOptions): Promise<WriteNoteResult> {
   const mode = opts.mode ?? "new";
-  const folder = (opts.folder || "").replace(/^\/+|\/+$/g, "");
+  const folder = (opts.folder || "").replace(/^[/\\]+|[/\\]+$/g, "");
   const fileName = sanitizeFileName(opts.title);
-  const relativePath = path.join(folder, `${fileName}.md`);
   const absoluteDir = path.join(opts.vault.path, folder);
-  const absolutePath = path.join(absoluteDir, `${fileName}.md`);
-
   ensureDir(absoluteDir);
 
-  const exists = fs.existsSync(absolutePath);
-  let created = !exists;
+  const baseAbsolute = path.join(absoluteDir, `${fileName}.md`);
+  const baseRelative = path.join(folder, `${fileName}.md`);
+  const exists = fs.existsSync(baseAbsolute);
 
-  if (mode === "append" && exists) {
-    const prev = fs.readFileSync(absolutePath, "utf8");
-    const sep = prev.endsWith("\n") ? "\n" : "\n\n";
-    fs.writeFileSync(absolutePath, prev + sep + opts.content, "utf8");
-  } else if (mode === "overwrite" || !exists) {
-    fs.writeFileSync(absolutePath, opts.content, "utf8");
-    created = !exists || mode === "overwrite";
-  } else if (mode === "new" && exists) {
-    // Unique name if collision
-    let i = 1;
-    let candidate = absolutePath;
-    let rel = relativePath;
-    while (fs.existsSync(candidate)) {
-      const unique = `${fileName}-${i}.md`;
-      candidate = path.join(absoluteDir, unique);
-      rel = path.join(folder, unique);
-      i += 1;
+  let absolutePath = baseAbsolute;
+  let relativePath = baseRelative;
+  let created = false;
+
+  if (mode === "append") {
+    if (exists) {
+      const prev = fs.readFileSync(baseAbsolute, "utf8");
+      const sep = prev.length === 0 || prev.endsWith("\n") ? "\n" : "\n\n";
+      fs.writeFileSync(baseAbsolute, prev + sep + opts.content, "utf8");
+      created = false;
+    } else {
+      fs.writeFileSync(baseAbsolute, opts.content, "utf8");
+      created = true;
     }
-    fs.writeFileSync(candidate, opts.content, "utf8");
-    if (opts.openAfter) {
-      await openObsidianPath(candidate);
-    }
-    return { absolutePath: candidate, relativePath: rel, created: true };
+  } else if (mode === "overwrite") {
+    fs.writeFileSync(baseAbsolute, opts.content, "utf8");
+    created = !exists;
   } else {
+    // mode === "new": never clobber; pick unique name on collision
+    const target = uniqueMarkdownPath(absoluteDir, folder, fileName);
+    absolutePath = target.absolutePath;
+    relativePath = target.relativePath;
     fs.writeFileSync(absolutePath, opts.content, "utf8");
+    created = true;
   }
 
   if (opts.openAfter) {
@@ -104,6 +121,7 @@ export async function writeNoteToVault(opts: WriteNoteOptions): Promise<WriteNot
 }
 
 export async function openObsidianPath(absolutePath: string) {
+  // Core Obsidian URI — works without Advanced URI plugin
   const target = `obsidian://open?path=${encodeURIComponent(absolutePath)}`;
   await open(target);
 }

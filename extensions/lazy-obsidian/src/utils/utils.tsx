@@ -28,12 +28,13 @@ export function parseVaults(): Vault[] {
   const vaultString = pref.vaultPath || "";
   return vaultString
     .split(",")
-    .filter((vaultPath) => vaultPath.trim() !== "")
-    .filter((vaultPath) => fs.existsSync(vaultPath.trim()))
+    .map((vaultPath) => vaultPath.trim())
+    .filter((vaultPath) => vaultPath !== "")
+    .filter((vaultPath) => fs.existsSync(vaultPath))
     .map((vault) => ({
-      name: getVaultNameFromPath(vault.trim()),
-      key: vault.trim(),
-      path: vault.trim(),
+      name: getVaultNameFromPath(vault),
+      key: vault,
+      path: vault,
     }));
 }
 
@@ -53,36 +54,63 @@ async function loadObsidianJson(): Promise<Vault[]> {
   }
 }
 
+/**
+ * Resolve vaults from preferences and/or Obsidian's obsidian.json.
+ * Preference paths win when set; otherwise auto-detect.
+ * If both exist, preference vaults are listed first, then any additional detected vaults.
+ */
 export function useObsidianVaults(): ObsidianVaultsState {
   const pref = useMemo(() => getPreferenceValues<GlobalPreferences>(), []);
-  const [state, setState] = useState<ObsidianVaultsState>(
-    pref.vaultPath
-      ? {
-          ready: true,
-          vaults: parseVaults(),
-        }
-      : { ready: false, vaults: [] }
-  );
+  const hasPrefPaths = Boolean(pref.vaultPath && pref.vaultPath.trim());
+
+  const [state, setState] = useState<ObsidianVaultsState>({
+    ready: false,
+    vaults: hasPrefPaths ? parseVaults() : [],
+  });
 
   useEffect(() => {
-    if (!state.ready) {
-      loadObsidianJson()
-        .then((vaults) => {
-          setState({ vaults, ready: true });
-        })
-        .catch(() => setState({ vaults: parseVaults(), ready: true }));
-    }
-  }, []);
+    let cancelled = false;
+
+    (async () => {
+      const fromPrefs = hasPrefPaths ? parseVaults() : [];
+      const fromJson = await loadObsidianJson();
+
+      const byPath = new Map<string, Vault>();
+      for (const v of fromPrefs) byPath.set(v.path, v);
+      for (const v of fromJson) {
+        if (!byPath.has(v.path)) byPath.set(v.path, v);
+      }
+
+      if (!cancelled) {
+        setState({ ready: true, vaults: Array.from(byPath.values()) });
+      }
+    })().catch(() => {
+      if (!cancelled) {
+        setState({ ready: true, vaults: hasPrefPaths ? parseVaults() : [] });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasPrefPaths, pref.vaultPath]);
 
   return state;
 }
 
 export async function urlToMarkdown(url: string): Promise<string> {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "LazyObsidian/0.1 (Raycast; +https://github.com/pysol-dev/raycast-extensions)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
     const html = await response.text();
     const root = parse(html);
-    // Prefer main/article content when present
     const main = root.querySelector("article") || root.querySelector("main") || root.querySelector("body");
     const nhm = new NodeHtmlMarkdown();
     return nhm.translate(main ? main.innerHTML : html);
