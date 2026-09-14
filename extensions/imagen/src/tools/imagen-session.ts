@@ -15,12 +15,17 @@ import {
   createSession,
   readManifest,
   writeManifest,
+  parseLockSpec,
+  mergeLocks,
   SessionNotConfiguredError,
 } from "../lib/session";
 
 type Input = {
-  /** Action to perform. Default "status". */
-  action?: "status" | "rollback" | "set-current";
+  /**
+   * Action to perform. Default "status". "set-locks" updates the locked
+   * attribute set without generating an image.
+   */
+  action?: "status" | "rollback" | "set-current" | "set-locks";
   /** Session name to inspect. Omit to use the most recently updated session in the directory. */
   sessionName?: string;
   /** Directory containing the session. */
@@ -29,11 +34,19 @@ type Input = {
   projectRoot?: string;
   /** Target version number for "set-current", or steps back for "rollback" (default 1). */
   target?: string;
+  /**
+   * For "set-locks": attributes to lock, as "key=value" pairs separated by
+   * ";" or newlines. Existing keys with the same name are overwritten.
+   */
+  lock?: string;
+  /** For "set-locks": keys to remove from the locked set (semicolon-separated). */
+  unlock?: string;
 };
 
 /**
  * Read or manage the session manifest: list versions, roll back the current
- * pointer, or point at a specific version. Never deletes files.
+ * pointer, point at a specific version, or update the locked attribute set.
+ * Never deletes files.
  */
 export default async function tool(input: Input) {
   const action = input.action ?? "status";
@@ -59,6 +72,30 @@ export default async function tool(input: Input) {
     return {
       error: "no-session",
       message: `No session found at ${sessionPath}. Generate or edit an image first with imagen-generate / imagen-edit.`,
+    };
+  }
+
+  if (action === "set-locks") {
+    const existing: Record<string, string> = { ...(manifest.locked ?? {}) };
+    if (input.unlock) {
+      for (const key of input.unlock
+        .split(/[;\n]+/)
+        .map((k) => k.trim())
+        .filter(Boolean)) {
+        delete existing[key];
+      }
+    }
+    const newLocks = input.lock ? parseLockSpec(input.lock) : {};
+    const merged = mergeLocks(existing, newLocks);
+    manifest.locked = Object.keys(merged).length ? merged : undefined;
+    manifest.updatedAt = new Date().toISOString();
+    writeManifest(sessionPath, manifest);
+    return {
+      ok: true,
+      session: sessionPath,
+      action: "set-locks",
+      lockedAttributes: manifest.locked ?? {},
+      locksApplied: Object.keys(newLocks).length ? newLocks : undefined,
     };
   }
 

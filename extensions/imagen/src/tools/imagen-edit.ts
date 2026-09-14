@@ -21,6 +21,8 @@ import {
   writeManifest,
   nextVersionPath,
   versionFile,
+  parseLockSpec,
+  mergeLocks,
   SessionManifest,
   SessionNotConfiguredError,
 } from "../lib/session";
@@ -56,6 +58,18 @@ type Input = {
    * Engine override. Default for edits is "flux-kontext".
    */
   engine?: "flux-kontext" | "gpt-image" | "nano-banana";
+  /**
+   * New attributes to lock into the session, as "key=value" pairs separated
+   * by ";" or newlines (e.g. "eyes=black ovals with gloss; palette=muted").
+   * Locked attributes are injected into every future prompt in this session
+   * to prevent drift. Existing keys with the same name are overwritten.
+   */
+  lock?: string;
+  /**
+   * Keys to remove from the locked set (semicolon-separated). Removing a
+   * lock stops it being injected into future prompts.
+   */
+  unlock?: string;
 };
 
 export const confirmation: Tool.Confirmation<Input> = async (input) => {
@@ -107,8 +121,20 @@ export default async function tool(input: Input) {
     return { error: "base-image-missing", message: `Base image not found: ${baseImage}` };
   }
 
-  // Merge locked attributes into the manifest (accumulate across versions)
-  const locked: Record<string, string> = { ...(manifest?.locked ?? {}) };
+  // Progressive locking: start from existing locks, apply unlock, then apply
+  // new locks. The effective set is injected into this call's prompt AND
+  // persisted to the manifest so every future version inherits it.
+  let locked: Record<string, string> = { ...(manifest?.locked ?? {}) };
+  if (input.unlock) {
+    for (const key of input.unlock
+      .split(/[;\n]+/)
+      .map((k) => k.trim())
+      .filter(Boolean)) {
+      delete locked[key];
+    }
+  }
+  const newLocks = input.lock ? parseLockSpec(input.lock) : {};
+  locked = mergeLocks(locked, newLocks);
 
   if (!manifest) {
     const now = new Date().toISOString();
@@ -122,7 +148,7 @@ export default async function tool(input: Input) {
       locked: Object.keys(locked).length ? locked : undefined,
     };
   } else {
-    manifest.locked = Object.keys(locked).length ? locked : manifest.locked;
+    manifest.locked = Object.keys(locked).length ? locked : undefined;
   }
 
   const engine = input.engine ?? defaultEngine("edit");
@@ -149,6 +175,13 @@ export default async function tool(input: Input) {
     prompt: input.prompt,
     createdAt: new Date().toISOString(),
     basedOn: manifest.current || null,
+    locksApplied: Object.keys(newLocks).length ? newLocks : undefined,
+    locksRemoved: input.unlock
+      ? input.unlock
+          .split(/[;\n]+/)
+          .map((k) => k.trim())
+          .filter(Boolean)
+      : undefined,
   };
   manifest.versions.push(version);
   manifest.current = n;
@@ -164,5 +197,6 @@ export default async function tool(input: Input) {
     basedOn: version.basedOn,
     totalVersions: manifest.versions.length,
     lockedAttributes: manifest.locked ?? {},
+    locksApplied: Object.keys(newLocks).length ? newLocks : undefined,
   };
 }

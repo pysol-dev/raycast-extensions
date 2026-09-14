@@ -134,6 +134,10 @@ export interface SessionVersion {
   createdAt: string;
   /** Version number this edit was based on, null for fresh generations. */
   basedOn: number | null;
+  /** Locks newly applied by this version (key -> value). */
+  locksApplied?: Record<string, string>;
+  /** Lock keys removed by this version. */
+  locksRemoved?: string[];
 }
 
 export interface SessionManifest {
@@ -173,4 +177,41 @@ export function versionFile(manifest: SessionManifest, n?: number): string | und
 /** Fallback location when nothing is configured: the extension support path. */
 export function supportFallback(): string {
   return environment.supportPath;
+}
+
+/**
+ * Parse a lock specification string into a key/value map.
+ *
+ * Accepts pairs separated by `;` or newlines, with `key=value` or
+ * `key: value`. Pairs that cannot be parsed are skipped silently so a
+ * malformed pair never blocks a generation. Used by all three tools so
+ * lock syntax is identical everywhere.
+ *
+ * Example: "eyes: black ovals with gloss; palette: muted red/orange/blue/pink"
+ */
+export function parseLockSpec(spec: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of spec.split(/[\n;]+/)) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const m = trimmed.match(/^([^=:]+)[=:](.*)$/);
+    if (!m) continue;
+    const key = m[1].trim();
+    const value = m[2].trim();
+    if (key && value) out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Merge new locks into a manifest's locked map (in place on the passed
+ * record; returns the map to assign to `manifest.locked`). Existing keys
+ * are overwritten — the most recent explicit lock wins, matching the
+ * progressive-locking semantics in .agents/decisions/006.
+ */
+export function mergeLocks(
+  existing: Record<string, string> | undefined,
+  add: Record<string, string>
+): Record<string, string> {
+  return { ...(existing ?? {}), ...add };
 }
