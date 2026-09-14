@@ -1,0 +1,118 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "imagen",
+  "title": "Imagen",
+  "description": "Versioned, manifest-driven AI image generation and editing sessions with preservation of unchanged regions",
+  "icon": "icon.png",
+  "author": "thales",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Design Tools",
+    "Developer Tools"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "configure",
+      "title": "Configure Session Storage",
+      "description": "Set the default session directory and map project roots to dedicated session directories",
+      "mode": "view"
+    }
+  ],
+  "tools": [
+    {
+      "name": "imagen-edit",
+      "title": "Edit Image",
+      "description": "Edit an existing image with a prompt, preserving unchanged regions. Appends a new version to a versioned session and returns the new version path.",
+      "keywords": [
+        "image",
+        "edit",
+        "inpaint",
+        "version"
+      ],
+      "functionalities": [
+        "AI tool"
+      ]
+    },
+    {
+      "name": "imagen-session",
+      "title": "Session State",
+      "description": "Inspect or manage an image session: read the manifest, list versions, check status, or roll back the current version pointer.",
+      "keywords": [
+        "session",
+        "manifest",
+        "history"
+      ],
+      "functionalities": [
+        "AI tool"
+      ]
+    },
+    {
+      "name": "imagen-generate",
+      "title": "Generate Image",
+      "description": "Generate a new image from a text prompt, optionally conditioned on a reference image. Appends a new version to a versioned session and returns the new version path.",
+      "keywords": [
+        "image",
+        "generate",
+        "create"
+      ],
+      "functionalities": [
+        "AI tool"
+      ]
+    }
+  ],
+  "preferences": [
+    {
+      "name": "bflApiKey",
+      "title": "Black Forest Labs API Key",
+      "description": "API key for Black Forest Labs (Flux Kontext). Required for the default edit engine.",
+      "type": "password",
+      "required": false,
+      "placeholder": "BFL API key"
+    },
+    {
+      "name": "openaiApiKey",
+      "title": "OpenAI API Key",
+      "description": "API key for OpenAI. Required for the gpt-image generation engine.",
+      "type": "password",
+      "required": false,
+      "placeholder": "sk-..."
+    },
+    {
+      "name": "geminiApiKey",
+      "title": "Google Gemini API Key",
+      "description": "API key for Google AI Studio. Required for the nano-banana generation engine.",
+      "type": "password",
+      "required": false,
+      "placeholder": "AIza..."
+    },
+    {
+      "name": "defaultSessionDir",
+      "title": "Default Session Directory",
+      "description": "Directory used to store image sessions when no project mapping or explicit path applies.",
+      "type": "directory",
+      "required": false
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^2.3.1"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^2.0.5",
+    "@types/node": "^22.13.10",
+    "eslint": "^9.22.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "publish": "ray publish"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

@@ -1,0 +1,36 @@
+# Raycast AI extension instructions for Imagen
+
+instructions: |
+  Imagen provides versioned, manifest-driven image generation and editing.
+
+  Routing rules:
+  - To EDIT an existing image (change part of it, keep the rest), use the imagen-edit tool.
+    Its default engine (flux-kontext) preserves unchanged regions. Describe ONLY the change.
+  - To CREATE a new image from scratch, use the imagen-generate tool.
+  - To inspect history, roll back, or check session state, use the imagen-session tool.
+
+  Consistency rules:
+  - When the user demands consistency ("same eyes", "don't change the palette"), pass those
+    requirements as locked attributes. They persist in the session manifest and are injected
+    into every future prompt.
+  - Never pass imagePath for images already in the session — the session's current version
+    is used automatically, preventing wrong-base edits.
+  - If a tool returns session-not-configured, tell the user to run the
+    "Configure Session Storage" command. If it returns missing-api-key, tell the user which
+    preference to set in Raycast Preferences > Extensions > Imagen.
+  - Never delete or overwrite version files; use imagen-session rollback to revisit versions.
+
+evals:
+  - input: "Make the torn corner on the logo bigger but keep everything else identical"
+    expected:
+      callsTool:
+        name: imagen-edit
+      includes: ["torn corner"]
+  - input: "Generate a new concept: four fabrics patched together with mimikyu eyes in the center"
+    expected:
+      callsTool:
+        name: imagen-generate
+  - input: "What versions do we have so far in the logo session?"
+    expected:
+      callsTool:
+        name: imagen-session

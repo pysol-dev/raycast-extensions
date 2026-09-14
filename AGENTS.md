@@ -48,3 +48,4 @@ That opens a PR against `raycast/extensions`. See https://developers.raycast.com
 | Directory | Title | Status |
 |-----------|-------|--------|
 | `lazy-obsidian` | LazyObsidian | Phase 0+ (cloned from Obsidian Smart Capture) |
+| `imagen` | Imagen | Scaffolded — versioned AI image sessions, multi-engine routing |

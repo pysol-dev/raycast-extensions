@@ -7,11 +7,12 @@ Personal monorepo for Raycast extensions.
 | Extension | Path | Description |
 |-----------|------|-------------|
 | **LazyObsidian** | [`extensions/lazy-obsidian`](./extensions/lazy-obsidian) | Capture from macOS into Obsidian (FS-first, progressive AI) |
+| **Imagen** | [`extensions/imagen`](./extensions/imagen) | Versioned AI image sessions — persistent manifests, region preservation, multi-engine routing (Flux Kontext / GPT Image / Nano Banana) |
 
 ## Develop
 
 ```bash
-cd extensions/lazy-obsidian
+cd extensions/<name>
 npm install
 npm run dev
 ```
