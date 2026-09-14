@@ -51,6 +51,8 @@ If nothing is configured, tools return a structured `session-not-configured` err
 
 Locked attributes (e.g. `"eyes": "all-black ovals with gloss"`, `"palette": "pink, blue, orange, red"`) are stored in the session manifest and appended to every subsequent prompt in that session, preventing drift across versions. Edits route to Flux Kontext, which conditions on the previous version's image so unchanged regions are preserved.
 
+**Locking is progressive.** Every `imagen-edit` and `imagen-generate` call accepts a `lock` parameter — `key=value` pairs separated by `;` or newlines — that is merged into the session's locked set and persisted with the new version. Re-locking an existing key overwrites it (the most recent instruction wins). An `unlock` parameter removes keys. The `imagen-session` tool's `set-locks` action manages the locked set without generating an image. Each version records `locksApplied` / `locksRemoved` provenance in the manifest, so you can trace which version introduced each constraint. Locks survive rollback — they are session state, not version state; remove them explicitly with `unlock` or `set-locks`.
+
 ## Setup
 
 1. Install the extension.
