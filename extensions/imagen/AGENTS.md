@@ -4,7 +4,7 @@ Guidance for AI agents working in this repository.
 
 ## What this is
 
-A Raycast extension providing versioned, manifest-driven AI image generation and editing. Three AI tools (`imagen-generate`, `imagen-edit`, `imagen-session`) plus one view command (`configure`).
+A Raycast extension providing versioned, manifest-driven AI image generation and editing. Four AI tools (`imagen-generate`, `imagen-edit`, `imagen-session`, `imagen-commit`) plus one view command (`configure`). `imagen-commit` ingests images produced by Raycast's native image tools (`@gpt_image`, `@nano_banana`, `@flux-kontext`) into the session — see `.agents/decisions/007-NATIVE-TOOL-ORCHESTRATION.md`.
 
 ## Repository layout
 
@@ -16,7 +16,8 @@ src/
 ├── tools/
 │   ├── imagen-edit.ts    # edit tool (default engine: flux-kontext)
 │   ├── imagen-generate.ts# generation tool (default engine: gpt-image)
-│   └── imagen-session.ts # manifest inspection / rollback
+│   ├── imagen-session.ts # manifest inspection / rollback
+│   └── imagen-commit.ts  # ingest external/native-tool images into the session
 └── configure.tsx         # view command: default dir + project mappings
 assets/icon.png           # 512×512 store icon (required)
 .agents/

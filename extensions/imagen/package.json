@@ -61,6 +61,20 @@
       "functionalities": [
         "AI tool"
       ]
+    },
+    {
+      "name": "imagen-commit",
+      "title": "Commit External Image",
+      "description": "Ingest an image produced by any external tool (gpt_image, nano_banana, flux-kontext, or a manual file) into a versioned session as a new version, with lock and manifest updates.",
+      "keywords": [
+        "image",
+        "commit",
+        "version",
+        "external"
+      ],
+      "functionalities": [
+        "AI tool"
+      ]
     }
   ],
   "preferences": [
